@@ -53,3 +53,6 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// go-imap patched for Mail2000
+replace github.com/emersion/go-imap => github.com/Bowen951209/go-imap-mail2000 v1.2.2-0.20260811235636-93ef995e668b

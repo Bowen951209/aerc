@@ -7,6 +7,8 @@ import (
 	sortthread "github.com/emersion/go-imap-sortthread"
 
 	"git.sr.ht/~rjarry/aerc/worker/types"
+
+	//"os"
 )
 
 func (imapw *IMAPWorker) handleOpenDirectory(msg *types.OpenDirectory) error {
@@ -60,6 +62,11 @@ func (imapw *IMAPWorker) handleFetchDirectoryContents(
 			uids[i], uids[j] = uids[j], uids[i]
 		}
 	default:
+		// gmail and nchu are here (! imapw.caps.Sort && !hasSortCriteria)
+		// searchCriteria are the same, too.
+
+		// DEBUG
+		//imapw.client.SetDebug(os.Stdout)
 		if hasSortCriteria {
 			imapw.worker.Warnf("SORT is not supported but requested: list messages by UID")
 		}
