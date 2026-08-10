@@ -14,6 +14,8 @@ type ViewerConfig struct {
 	Pager            string     `ini:"pager" default:"less -Rc"`
 	Alternatives     []string   `ini:"alternatives" default:"text/plain,text/html" delim:","`
 	ShowHeaders      bool       `ini:"show-headers"`
+	ShowHeaderUI     bool       `ini:"show-header-ui" default:"true"`
+	CustomHeaders    bool       `ini:"custom-headers" default:"true"`
 	AlwaysShowMime   bool       `ini:"always-show-mime"`
 	MaxMimeHeight    int        `ini:"max-mime-height" default:"0"`
 	ParseHttpLinks   bool       `ini:"parse-http-links" default:"true"`

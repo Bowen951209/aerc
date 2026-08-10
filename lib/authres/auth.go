@@ -23,6 +23,23 @@ const (
 
 type Result string
 
+func (r Result) Symbol() string {
+	switch r {
+	case ResultNone:
+		return "none"
+	case ResultNeutral:
+		return "neutral"
+	case ResultPolicy:
+		return "policy"
+	case ResultPass:
+		return "✓"
+	case ResultFail:
+		return "✗"
+	default:
+		return string(r)
+	}
+}
+
 const (
 	ResultNone    Result = "none"
 	ResultPass    Result = "pass"

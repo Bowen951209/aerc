@@ -900,10 +900,11 @@ These options are configured in the *[viewer]* section of _aerc.conf_.
 	Default: _text/plain,text/html_
 
 *header-layout* = _<header|layout,list...>_
-	Defines the default headers to display when viewing a message. To display
-	multiple headers in the same row, separate them with a pipe, e.g. _From|To_.
-	Rows will be hidden if none of their specified headers are present in the
-	message.
+	Layout of headers when viewing a message both in the message viewer and in
+	the header UI. In the header UI, to display multiple headers in the same
+	row, separate them with a pipe, e.g. "From|To". Rows will be hidden if none
+	of their specified headers are present in the message. The layout in the
+	viewer will be line-by-line, regardless of the complex row syntax.
 
 	Notmuch tags can be displayed by adding Labels.
 
@@ -915,10 +916,25 @@ These options are configured in the *[viewer]* section of _aerc.conf_.
 	Default: _From|To,Cc|Bcc,Date,Subject_
 
 *show-headers* = _true_|_false_
-	Default setting to determine whether to show full headers or only parsed
-	ones in message viewer.
+	Whether to show headers in the message viewer. Set the custom-headers option
+	to choose to show custom decoded headers specified in the header-layout
+	option, or to show the full raw headers.
 
 	Default: _false_
+
+
+*show-header-ui* = _true_|_false_
+	Whether to show header UI. You might want to disable this if you want to
+	enable *show-headers*.
+
+	Default: _true_
+
+*custom-headers* = _true_|_false_
+	Whether to show custom decoded headers or all raw headers in the message
+	viewer. The custom set of headers is specified in header-layout. This only
+	matters if show-headers is true.
+
+	Default: true
 
 *always-show-mime* = _true_|_false_
 	Whether to always show the mimetype of an email, even when it is just a single part.

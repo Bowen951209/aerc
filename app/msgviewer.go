@@ -72,45 +72,52 @@ func NewMessageViewer(
 	}
 	info := msg.MessageInfo()
 	viewerConfig := config.Viewer().ForEnvelope(info.Envelope)
-	hf := HeaderLayoutFilter{
-		layout: HeaderLayout(viewerConfig.HeaderLayout),
-		keep: func(msg *models.MessageInfo, header string) bool {
-			return fmtHeader(msg, header, "2", "3", "4", "5") != ""
-		},
-	}
-	layout := hf.forMessage(msg.MessageInfo())
-	header, headerHeight := layout.grid(
-		func(header string) ui.Drawable {
-			hv := &HeaderView{
-				Name: header,
-				Value: fmtHeader(
-					msg.MessageInfo(),
-					header,
-					acct.UiConfig().MessageViewTimestampFormat,
-					acct.UiConfig().MessageViewThisDayTimeFormat,
-					acct.UiConfig().MessageViewThisWeekTimeFormat,
-					acct.UiConfig().MessageViewThisYearTimeFormat,
-				),
-				uiConfig: acct.UiConfig(),
-			}
-			showInfo := false
-			if i := strings.IndexRune(header, '+'); i > 0 {
-				header = header[:i]
-				hv.Name = header
-				showInfo = true
-			}
-			if parser := authres.New(header); parser != nil && msg.MessageInfo().RFC822Headers != nil {
-				details, err := parser(msg.MessageInfo().RFC822Headers, acct.AccountConfig().TrustedAuthRes)
-				if err != nil {
-					hv.Value = err.Error()
-				} else {
-					hv.ValueField = NewAuthInfo(details, showInfo, acct.UiConfig())
+
+	var header *ui.Grid
+	var headerHeight int
+	if viewerConfig.ShowHeaderUI {
+		hf := HeaderLayoutFilter{
+			layout: HeaderLayout(viewerConfig.HeaderLayout),
+			keep: func(msg *models.MessageInfo, header string) bool {
+				return fmtHeader(msg, header, true, nil, "2", "3", "4", "5") != ""
+			},
+		}
+		layout := hf.forMessage(msg.MessageInfo())
+		header, headerHeight = layout.grid(
+			func(header string) ui.Drawable {
+				hv := &HeaderView{
+					Name: header,
+					Value: fmtHeader(
+						msg.MessageInfo(),
+						header,
+						true,
+						nil,
+						acct.UiConfig().MessageViewTimestampFormat,
+						acct.UiConfig().MessageViewThisDayTimeFormat,
+						acct.UiConfig().MessageViewThisWeekTimeFormat,
+						acct.UiConfig().MessageViewThisYearTimeFormat,
+					),
+					uiConfig: acct.UiConfig(),
 				}
-				hv.Invalidate()
-			}
-			return hv
-		},
-	)
+				showInfo := false
+				if i := strings.IndexRune(header, '+'); i > 0 {
+					header = header[:i]
+					hv.Name = header
+					showInfo = true
+				}
+				if parser := authres.New(header); parser != nil && msg.MessageInfo().RFC822Headers != nil {
+					details, err := parser(msg.MessageInfo().RFC822Headers, acct.AccountConfig().TrustedAuthRes)
+					if err != nil {
+						hv.Value = err.Error()
+					} else {
+						hv.ValueField = NewAuthInfo(details, showInfo, acct.UiConfig())
+					}
+					hv.Invalidate()
+				}
+				return hv
+			},
+		)
+	}
 
 	switcher := &PartSwitcher{}
 	err := createSwitcher(acct, switcher, msg)
@@ -180,15 +187,28 @@ func (mv *MessageViewer) viewerConfig() *config.ViewerConfig {
 	return config.Viewer().ForEnvelope(mv.envelope)
 }
 
-func fmtHeader(msg *models.MessageInfo, header string,
+func fmtHeader(msg *models.MessageInfo, header string, lazyLoad bool, trustedAuthRes []string,
 	timefmt string, todayFormat string, thisWeekFormat string, thisYearFormat string,
 ) string {
 	if msg == nil || msg.Envelope == nil {
 		return "error: no envelope for this message"
 	}
 
-	if v := authres.New(header); v != nil {
-		return "Fetching..."
+	if parser := authres.New(header); parser != nil {
+		if lazyLoad {
+			return "Fetching..."
+		}
+		details, err := parser(msg.RFC822Headers, trustedAuthRes)
+		if err != nil {
+			return fmt.Sprintf("%v", err)
+		}
+
+		showInfo := strings.Contains(header, "+")
+		chunks, err := FormatAuthInfoToChunks(details, showInfo, 9999)
+		if err == nil {
+			return chunksToString(chunks)
+		}
+		return fmt.Sprintf("%v", err)
 	}
 
 	switch header {
@@ -215,8 +235,7 @@ func fmtHeader(msg *models.MessageInfo, header string,
 	case "Labels":
 		return strings.Join(msg.Labels, ", ")
 	default:
-		rfc822Headers := msg.RFC822Headers
-		if rfc822Headers == nil {
+		if lazyLoad || msg.RFC822Headers == nil {
 			return "Fetching..."
 		}
 		return msg.RFC822Headers.Get(header)
@@ -738,25 +757,55 @@ func (pv *PartViewer) writeMailHeaders() {
 		defer file.Close()
 	}
 
-	var buf bytes.Buffer
-	err := textproto.WriteHeader(&buf, info.RFC822Headers.Header.Header)
-	if err != nil {
-		log.Errorf("failed to format headers: %v", err)
-	}
-	_, err = file.Write(bytes.TrimRight(buf.Bytes(), "\r\n"))
-	if err != nil {
-		log.Errorf("failed to write headers: %v", err)
-	}
+	if pv.viewerConfig().CustomHeaders {
+		layout := config.Viewer().ForEnvelope(info.Envelope).HeaderLayout
 
-	// virtual header
-	if len(info.Labels) != 0 {
-		labels := fmtHeader(info, "Labels", "", "", "", "")
-		_, err := fmt.Fprintf(file, "\r\nLabels: %s", labels)
+		// Flatten the layout and print headers to file line by line.
+		for _, headerNames := range layout {
+			for _, headerName := range headerNames {
+				headerValue := fmtHeader(
+					info,
+					headerName,
+					false,
+					pv.acctConfig.TrustedAuthRes,
+					pv.uiConfig.MessageViewTimestampFormat,
+					pv.uiConfig.MessageViewThisDayTimeFormat,
+					pv.uiConfig.MessageViewThisWeekTimeFormat,
+					pv.uiConfig.MessageViewThisYearTimeFormat,
+				)
+
+				if i := strings.IndexRune(headerName, '+'); i > 0 {
+					headerName = headerName[:i]
+				}
+
+				_, err := fmt.Fprintf(file, "%s: %s\r\n", headerName, headerValue)
+				if err != nil {
+					log.Errorf("failed to write header: %v", err)
+				}
+			}
+		}
+	} else {
+		var buf bytes.Buffer
+		err := textproto.WriteHeader(&buf, info.RFC822Headers.Header.Header)
 		if err != nil {
-			log.Errorf("failed to write to labels: %v", err)
+			log.Errorf("failed to format headers: %v", err)
+		}
+		_, err = file.Write(bytes.TrimRight(buf.Bytes(), "\r\n"))
+		if err != nil {
+			log.Errorf("failed to write headers: %v", err)
+		}
+
+		// virtual header
+		if len(info.Labels) != 0 {
+			labels := fmtHeader(info, "Labels", false, nil, "", "", "", "")
+			_, err := fmt.Fprintf(file, "\r\nLabels: %s\r\n", labels)
+			if err != nil {
+				log.Errorf("failed to write to labels: %v", err)
+			}
 		}
 	}
-	_, err = file.Write([]byte{'\r', '\n', '\r', '\n'})
+
+	_, err := file.Write([]byte{'\r', '\n'})
 	if err != nil {
 		log.Errorf("failed to write empty line: %v", err)
 	}
